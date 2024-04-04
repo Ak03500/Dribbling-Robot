@@ -17,7 +17,7 @@ prev = time.time()
 while not SETUP:
     try:
         # Serial port(windows-->COM), baud rate, timeout msg
-        port = serial.Serial("COM6", 460800, timeout=1)
+        port = serial.Serial("COM6", 115200, timeout=1)
 
     except Exception as e:
         if time.time() - prev > 2:  # Don't spam with msg
@@ -53,8 +53,8 @@ args = vars(ap.parse_args())
 # define the lower and upper boundaries of the "green"
 # ball in the HSV color space, then initialize the
 # list of tracked points
-greenLower = (50, 100,100)
-greenUpper = (80, 255, 255)
+greenLower = (29, 86, 6)
+greenUpper = (64, 255, 255)
 pts = deque(maxlen=args["buffer"])
 
 # Servo control states
@@ -140,14 +140,21 @@ while True:
              # Check x position to control the servo
             if x_real > 25:
                  # Send a command to ESP32 to make the servo sweep
-                cmd = "1"
-                port.write(cmd.encode())
-                print(cmd)
+                cmd = "sweep\n"
+                try:
+                    port.write(cmd.encode())
+                    port.flush()
+                except Exception as e:
+                    print(f"Error writing to serial port: {e}")
             else:
                  # Send a command to ESP32 to stop the servo
-                 cmd = "0"
-                 port.write(cmd.encode())
-                 print(cmd)
+                cmd = "stop\n"
+                try:
+                    port.write(cmd.encode())
+                    port.flush()
+                except Exception as e:
+                    print(f"Error writing to serial port: {e}")
+               
 
     # update the points queue
     pts.appendleft(center)

@@ -18,7 +18,7 @@ def create_kalman_filter():
     kalman.measurementNoiseCov = 1e-1 * np.eye(3, dtype=np.float32)
     return kalman
 
-cap = cv2.VideoCapture(1, cv2.CAP_DSHOW) #captureDevice = camera
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) #captureDevice = camera
 
 # Known diameter of the orange ball in centimeters
 known_diameter_cm = 4.0
