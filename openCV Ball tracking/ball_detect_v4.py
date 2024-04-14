@@ -1,18 +1,39 @@
 import serial
 import time
 from collections import deque
-from imutils.video import VideoStream
+#from imutils.video import VideoStream
 import numpy as np
 import argparse
 import cv2
-import imutils
+#import imutils
 import time
 from pathlib import Path
+from pid import PID
+# Create PID controllers for x and y axes
+pid_x = PID(kp=0.1, ki=0.01, kd=0.1)
+pid_y = PID(kp=0.1, ki=0.01, kd=0.1)
+
+# Set the desired setpoint to the center of the platform
+pid_x.set_setpoint(19)  # assuming center is at 0 for x-axis
+pid_y.set_setpoint(19)  # assuming center is at 0 for y-axis
+
+# def example(angle):
+#     return (angle - SERVO_MIN_DEGREE) * (SERVO_MAX_PULSEWIDTH_US - SERVO_MIN_PULSEWIDTH_US) / (SERVO_MAX_DEGREE - SERVO_MIN_DEGREE) + SERVO_MIN_PULSEWIDTH_US
+
+def map_pid_output_to_pwm(pid_output):
+    # Example conversion: 1500 µs is the center position of the servo.
+    # Assume PID output range from -10 to 10 needs to map to 1400 µs to 1600 µs
+    center_pwm = 1500
+    scale = 10  # This scale factor would be adjusted based on your specific hardware setup
+    pwm_signal = center_pwm + pid_output * scale
+    return max(1200, min(1700, pwm_signal))  # Ensure PWM signal stays within servo range
+
 
 MAX_BUFF_LEN = 255
+
 SETUP = False
 port = None
-
+counter = 0
 prev = time.time()
 while not SETUP:
     try:
@@ -64,24 +85,26 @@ servo_state = STOP_STATE
 
 # if a video path was not supplied, grab the reference
 # to the webcam
-if not args.get("video", False):
-    vs = VideoStream(src=0).start()
+# if not args.get("video", False):
+#     vs = VideoStream(src=0).start()
 
-# otherwise, grab a reference to the video file
-else:
-    vs = cv2.VideoCapture(args["video"])
+# # otherwise, grab a reference to the video file
+# else:
+#     vs = cv2.VideoCapture(args["video"])
 
+vs = cv2.VideoCapture(0, cv2.CAP_DSHOW) #captureDevice = camera
 # allow the camera or video file to warm up
 time.sleep(2.0)
-
+prevtime = time.time()
 # keep looping
 while True:
     # grab the current frame
-    frame = vs.read()
+    ret, frame = vs.read()
+    if not ret:
+        break  # Break the loop if unable to grab a frame
 
-    # handle the frame from VideoCapture or VideoStream
-    frame = frame[1] if args.get("video", False) else frame
-
+    # Resize the frame
+    frame = cv2.resize(frame, (600, int(frame.shape[0] * 600 / frame.shape[1])))
     # if we are viewing a video and we did not grab a frame,
     # then we have reached the end of the video
     if frame is None:
@@ -89,7 +112,7 @@ while True:
 
     # resize the frame, blur it, and convert it to the HSV
     # color space
-    frame = imutils.resize(frame, width=600)
+    # frame = cv2.resize(frame, width=600)
     blurred = cv2.GaussianBlur(frame, (11, 11), 0)
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
@@ -104,7 +127,8 @@ while True:
     # (x, y) center of the ball
     cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_SIMPLE)
-    cnts = imutils.grab_contours(cnts)
+    # cnts = imutils.grab_contours(cnts)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
     center = None
 
     # only proceed if at least one contour was found
@@ -130,24 +154,52 @@ while True:
             y_real = (center[1]) / pixels_per_cm
             z_real = radius * z_scale
 
-            # Display coordinates on the frame
+            # Display coordinates on the frameqqq
             cv2.putText(frame, f"X: {x_real:.2f} cm", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             cv2.putText(frame, f"Y: {y_real:.2f} cm", (10, 70),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             cv2.putText(frame, f"Z: {z_real:.2f} cm", (10, 110),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-             # Check x position to control the servo
-            if x_real > 25:
-                 # Send a command to ESP32 to make the servo sweep
-                cmd = "1"
-                port.write(cmd.encode())
-                print(cmd)
-            else:
-                 # Send a command to ESP32 to stop the servo
-                 cmd = "0"
-                 port.write(cmd.encode())
-                 print(cmd)
+            counter += 1
+
+            currentTime = time.time()
+            controlX = pid_x.update(x_real, currentTime)
+            controlY = pid_y.update(y_real, currentTime)
+
+            pwmX = map_pid_output_to_pwm(-controlX)
+            pwmY = map_pid_output_to_pwm(-controlY)
+            
+            # command = f"PWMX:{pwmX},PWMY:{pwmY}\n"
+            # port.write(command.encode('utf-8'))
+            # print("Sent to ESP32:", command.strip())
+
+
+            #Check the x position to control the servo based on the threshold
+            # if x_real > 24:
+            #     x = 9
+            #     y = 0
+            # else:
+            #     x = 0
+            #     y = 1
+            command = f"{int(pwmX)},{int(pwmY)}\n"  # Format the string with both values
+            port.write(command.encode('utf-8'))  # Send the command
+            print(command)
+
+            # # time.sleep(0.1)
+
+
+            # if x_real > 18:
+            #      # Send a command to ESP32 to make the servo sweep
+            #     cmd = "1"
+            #     port.write(cmd.encode())
+            #     print(cmd)
+            # else:
+            #      # Send a command to ESP32 to stop the servo
+            #      cmd = "0"
+            #      port.write(cmd.encode())
+            #      print(cmd)
+
 
     # update the points queue
     pts.appendleft(center)
@@ -168,6 +220,7 @@ while True:
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1) & 0xFF
 
+
     # if the 'q' key is pressed, stop the loop
     if key == ord("q"):
         break
@@ -176,9 +229,12 @@ while True:
         write_ser("sweep")
     else:
         write_ser("stop")
+
+
+#print(counter)
 # if we are not using a video file, stop the camera video stream
 if not args.get("video", False):
-    vs.stop()
+    vs.release()
 
 # otherwise, release the camera
 else:
@@ -186,3 +242,4 @@ else:
 
 # close all windows
 cv2.destroyAllWindows()
+
