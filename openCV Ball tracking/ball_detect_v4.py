@@ -10,12 +10,12 @@ import time
 from pathlib import Path
 from pid import PID
 # Create PID controllers for x and y axes
-pid_x = PID(kp=0.1, ki=0.01, kd=0.1)
-pid_y = PID(kp=0.1, ki=0.01, kd=0.1)
+pid_x = PID(kp=0.12, ki=0.01, kd=0.1)
+pid_y = PID(kp=0.12, ki=0.01, kd=0.1) 
 
 # Set the desired setpoint to the center of the platform
-pid_x.set_setpoint(19)  # assuming center is at 0 for x-axis
-pid_y.set_setpoint(19)  # assuming center is at 0 for y-axis
+pid_x.set_setpoint(31)  # assuming center is at 0 for x-axis
+pid_y.set_setpoint(22)  # assuming center is at 0 for y-axis
 
 # def example(angle):
 #     return (angle - SERVO_MIN_DEGREE) * (SERVO_MAX_PULSEWIDTH_US - SERVO_MIN_PULSEWIDTH_US) / (SERVO_MAX_DEGREE - SERVO_MIN_DEGREE) + SERVO_MIN_PULSEWIDTH_US
@@ -169,20 +169,19 @@ while True:
 
             pwmX = map_pid_output_to_pwm(-controlX)
             pwmY = map_pid_output_to_pwm(-controlY)
-            
             # command = f"PWMX:{pwmX},PWMY:{pwmY}\n"
             # port.write(command.encode('utf-8'))
             # print("Sent to ESP32:", command.strip())
 
 
             #Check the x position to control the servo based on the threshold
-            # if x_real > 24:
+            # if x_real > 24:   
             #     x = 9
             #     y = 0
             # else:
             #     x = 0
             #     y = 1
-            command = f"{int(pwmX)},{int(pwmY)}\n"  # Format the string with both values
+            command = f"{int(x_real)},{int(y_real)}\n"  # Format the string with both values
             port.write(command.encode('utf-8'))  # Send the command
             print(command)
 
